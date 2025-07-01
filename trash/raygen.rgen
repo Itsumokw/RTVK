@@ -1,0 +1,48 @@
+#version 460
+#extension GL_EXT_ray_tracing : enable
+
+layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+layout(binding = 1, set = 0, rgba8) uniform image2D image;
+
+// 修正相机参数绑定位置
+layout(set = 0, binding = 3) uniform CameraParams {
+    mat4 view_inverse;
+    mat4 proj_inverse;
+} cam;
+
+// 传递颜色累积和递归深度：这里示例使用两个 location：
+// location=0: vec3 color
+// location=1: int depth
+layout(location = 0) rayPayloadEXT vec3 payloadColor;
+layout(location = 1) rayPayloadEXT int payloadDepth;
+
+void main() 
+{
+	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+	const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
+	vec2 d = inUV * 2.0 - 1.0;
+
+	vec4 origin = cam.view_inverse * vec4(0,0,0,1);
+	vec4 target = cam.proj_inverse * vec4(d.x, d.y, 1, 1) ;
+	vec4 direction = cam.view_inverse*vec4(normalize(target.xyz), 0) ;
+
+    payloadColor = vec3(0.0);
+    payloadDepth = 0;
+
+	float tmin = 0.001;
+	float tmax = 10000.0;
+    traceRayEXT(
+        topLevelAS,         // 加速结构
+        gl_RayFlagsOpaqueEXT, // 射线标志
+        0xFF,               // 遮罩
+        0,                  // 偏移
+        0,                  // 几何索引
+        0,                  // payload位置
+        origin.xyz,          // 射线起点
+        tmin,               // 最小距离
+        direction.xyz,             // 射线方向
+        tmax,               // 最大距离
+        0                   // payload
+    );
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(payloadColor.rgb, 0.0));
+}
